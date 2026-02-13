@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://www.irshed.online/sitemap.xml
+Host: https://www.irshed.online

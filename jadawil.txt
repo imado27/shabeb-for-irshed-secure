@@ -1,0 +1,60 @@
+
+-- 1. جدول الأخبار (News)
+CREATE TABLE IF NOT EXISTS news (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  date TEXT NOT NULL,
+  category TEXT NOT NULL,
+  description TEXT NOT NULL,
+  image_url TEXT,
+  video_url TEXT,
+  media_urls TEXT[], -- مصفوفة نصوص لتخزين الروابط المتعددة
+  created_at BIGINT DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)
+);
+
+-- 2. جدول التسجيلات (Registrations)
+CREATE TABLE IF NOT EXISTS registrations (
+  id SERIAL PRIMARY KEY,
+  uid TEXT, -- للاحتفاظ بالمرجع إذا لزم الأمر
+  full_name TEXT NOT NULL,
+  birth_date TEXT NOT NULL,
+  birth_place TEXT,
+  address TEXT,
+  wilaya TEXT,
+  phone TEXT NOT NULL,
+  facebook_link TEXT,
+  education_level TEXT,
+  specialization TEXT,
+  has_volunteered_before TEXT,
+  previous_volunteering_details TEXT,
+  selected_cell TEXT,
+  agrees_to_fee BOOLEAN,
+  timestamp BIGINT DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)
+);
+
+-- 3. جدول مفاتيح عدم التكرار (Idempotency Keys)
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+  key TEXT PRIMARY KEY,
+  status TEXT NOT NULL,
+  created_at BIGINT,
+  completed_at BIGINT
+);
+
+-- 4. جدول حدود الإرسال (Rate Limits)
+CREATE TABLE IF NOT EXISTS rate_limits (
+  uid TEXT,
+  type TEXT, -- 'contact' or 'register'
+  timestamp BIGINT,
+  PRIMARY KEY (uid, type)
+);
+
+-- 5. جدول الإعدادات (Settings - للإيميلات)
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value JSONB -- تخزين مصفوفة الإيميلات كـ JSON
+);
+
+-- إدخال بيانات أولية للإعدادات (الإيميلات الافتراضية)
+INSERT INTO settings (key, value) 
+VALUES ('evaluation_emails', '["madmadimado59@gmail.com", "imad@gmail.com", "hafsasenoussa@gmail.com"]')
+ON CONFLICT (key) DO NOTHING;
