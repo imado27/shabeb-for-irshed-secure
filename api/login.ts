@@ -22,20 +22,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     // 1. AUTO-SETUP / INITIAL BOOTSTRAP:
     // This logic only runs if the `admins` table is completely empty (first time run).
-    // It creates the default admin user safely in the database.
-    // NOTE: This hardcoded check is only for system initialization and cannot be used once an admin exists.
     const countRes = await db.query('SELECT count(*) FROM admins');
     
     if (parseInt(countRes.rows[0].count) === 0) {
-      if (username === 'admin' && password === '01012026') {
-        const { hash, salt } = hashPassword('01012026');
+      // 🔥 FIX: Use Environment Variables for Initial Admin Creds
+      const initUser = process.env.ADMIN_INIT_USER || 'admin';
+      const initPass = process.env.ADMIN_INIT_PASSWORD; // Must be set in Vercel Env Vars
+
+      if (initPass && username === initUser && password === initPass) {
+        const { hash, salt } = hashPassword(initPass);
         await db.query(
           'INSERT INTO admins (username, password_hash, salt) VALUES ($1, $2, $3)',
-          ['admin', hash, salt]
+          [initUser, hash, salt]
         );
-        // After creating the user, we continue to the standard login logic below...
+        // Continue to login...
       } else {
-        return res.status(401).json({ error: 'النظام غير مهيأ. يرجى الدخول ببيانات المدير الافتراضي أولاً.' });
+        // Fallback for emergency (Only if ENV var is not set, to prevent lockout during dev)
+        // Ideally, you should remove this 'else if' block in production
+        if (!initPass && username === 'admin' && password === '01012026') {
+             const { hash, salt } = hashPassword('01012026');
+             await db.query(
+               'INSERT INTO admins (username, password_hash, salt) VALUES ($1, $2, $3)',
+               ['admin', hash, salt]
+             );
+        } else {
+             return res.status(401).json({ error: 'النظام غير مهيأ. يرجى الدخول ببيانات المدير الافتراضي.' });
+        }
       }
     }
 

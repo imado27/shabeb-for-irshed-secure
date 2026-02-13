@@ -1,6 +1,7 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getPool } from './_db.js';
+import { getClientIp } from './_utils.js';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_ID_MAIN = "@shabeb_for_irshed";
@@ -27,8 +28,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { data, uid } = req.body;
   const idempotencyKey = req.headers['idempotency-key'] as string;
   const now = Date.now();
+  
+  // 🔥 FIX: Use IP address as the secure identifier for Rate Limiting
+  const userIp = getClientIp(req);
 
-  if (!idempotencyKey || !data?.type || !uid) {
+  if (!idempotencyKey || !data?.type) {
     return res.status(400).json({ error: 'بيانات الطلب غير مكتملة.' });
   }
 
@@ -41,9 +45,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ success: true, cached: true });
     }
 
-    // 2. Rate Limiting Check
+    // 2. Rate Limiting Check (Using IP)
     const cooldownPeriod = data.type === 'contact' ? 86400000 : 1800000;
-    const rateCheck = await db.query('SELECT timestamp FROM rate_limits WHERE uid = $1 AND type = $2', [uid, data.type]);
+    
+    // Store/Check limit based on IP instead of client UID for better security
+    const rateCheck = await db.query('SELECT timestamp FROM rate_limits WHERE uid = $1 AND type = $2', [userIp, data.type]);
     
     if (rateCheck.rows.length > 0) {
       const lastTime = parseInt(rateCheck.rows[0].timestamp);
@@ -132,6 +138,8 @@ ${sep}
 
     // 4. Save to Database
     if (data.type === 'register') {
+      // For registration records, we still save the UID sent by client if needed for tracking, or use IP
+      // Keeping original UID logic for registration table to not break analytics, but rate limit uses IP
       await db.query(
         `INSERT INTO registrations (
           uid, full_name, birth_date, birth_place, address, wilaya, phone, facebook_link, 
@@ -145,13 +153,12 @@ ${sep}
         ]
       );
     } 
-    // We don't save contact messages to DB based on schema provided, only Rate Limit and Telegram.
 
-    // 5. Update Rate Limits & Idempotency
+    // 5. Update Rate Limits (Using IP) & Idempotency
     await db.query(
       `INSERT INTO rate_limits (uid, type, timestamp) VALUES ($1, $2, $3)
        ON CONFLICT (uid, type) DO UPDATE SET timestamp = $3`,
-      [uid, data.type, now]
+      [userIp, data.type, now]
     );
 
     await db.query(

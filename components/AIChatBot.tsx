@@ -1,7 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageCircle, X, Send, Bot, User, Loader2, Sparkles } from 'lucide-react';
-import { GoogleGenAI, Chat } from "@google/genai";
 
 interface Message {
   id: string;
@@ -23,35 +22,6 @@ const AIChatBot: React.FC = () => {
   ]);
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatSessionRef = useRef<Chat | null>(null);
-
-  // Initialize Gemini Chat Session
-  // Fix: Strictly following the @google/genai SDK guidelines for initialization
-  useEffect(() => {
-    const initChat = async () => {
-      try {
-        // As per guidelines: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
-        // and assume the variable is pre-configured and accessible.
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        chatSessionRef.current = ai.chats.create({
-          model: 'gemini-3-flash-preview',
-          config: {
-            systemInstruction: `أنت مساعد ذكي ومحفز للشباب تابع لجمعية "شباب فور إرشاد".
-            شخصيتك: ودود، حكيم، محفز، وتتحدث بأسلوب شبابي راقٍ ومحترم.
-            مهامك:
-            1. الإجابة عن أسئلة حول الجمعية (التسجيل، الأهداف، الرؤية) بناءً على المعلومات العامة للجمعيات الشبانية.
-            2. تقديم نصائح عامة للشباب في مجالات: تطوير الذات، أهمية التطوع، القيادة، والمهارات الحياتية.
-            3. لا تقتصر إجاباتك على محتوى الموقع فقط، بل كن موسوعة معرفية مفيدة للشباب.
-            4. تحدث دائماً باللغة العربية.`,
-          },
-        });
-      } catch (error) {
-        console.error("Error initializing AI:", error);
-      }
-    };
-    
-    initChat();
-  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -76,20 +46,24 @@ const AIChatBot: React.FC = () => {
     setIsTyping(true);
 
     try {
-      if (!chatSessionRef.current) {
-        // Fix: Ensure we use process.env.API_KEY as per guidelines if re-initialization is needed
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        chatSessionRef.current = ai.chats.create({
-          model: 'gemini-3-flash-preview',
-          config: {
-            systemInstruction: 'أنت مساعد ذكي ومحفز للشباب تابع لجمعية "شباب فور إرشاد". تحدث دائماً باللغة العربية.',
-          },
-        });
+      // Securely call the backend API instead of the SDK directly
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          message: userMsg.text,
+          // Optional: Send limited history context if needed in future updates
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
       }
 
-      // As per guidelines: Accessing the .text property directly from the response (not calling it as a method)
-      const result = await chatSessionRef.current.sendMessage({ message: userMsg.text });
-      const responseText = result.text;
+      const data = await response.json();
+      const responseText = data.response;
 
       const aiMsg: Message = {
         id: (Date.now() + 1).toString(),
