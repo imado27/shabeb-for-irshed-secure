@@ -8,14 +8,14 @@ CREATE TABLE IF NOT EXISTS news (
   description TEXT NOT NULL,
   image_url TEXT,
   video_url TEXT,
-  media_urls TEXT[], -- مصفوفة نصوص لتخزين الروابط المتعددة
+  media_urls TEXT[], 
   created_at BIGINT DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)
 );
 
 -- 2. جدول التسجيلات (Registrations)
 CREATE TABLE IF NOT EXISTS registrations (
   id SERIAL PRIMARY KEY,
-  uid TEXT, -- للاحتفاظ بالمرجع إذا لزم الأمر
+  uid TEXT,
   full_name TEXT NOT NULL,
   birth_date TEXT NOT NULL,
   birth_place TEXT,
@@ -40,21 +40,51 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
   completed_at BIGINT
 );
 
--- 4. جدول حدود الإرسال (Rate Limits)
+-- 4. جدول حدود الإرسال (Rate Limits - للمستخدمين العاديين)
 CREATE TABLE IF NOT EXISTS rate_limits (
   uid TEXT,
-  type TEXT, -- 'contact' or 'register'
+  type TEXT,
   timestamp BIGINT,
   PRIMARY KEY (uid, type)
 );
 
--- 5. جدول الإعدادات (Settings - للإيميلات)
+-- 5. جدول الإعدادات (Settings)
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
-  value JSONB -- تخزين مصفوفة الإيميلات كـ JSON
+  value JSONB
 );
 
--- إدخال بيانات أولية للإعدادات (الإيميلات الافتراضية)
+-- إدخال بيانات أولية للإعدادات
 INSERT INTO settings (key, value) 
 VALUES ('evaluation_emails', '["madmadimado59@gmail.com", "imad@gmail.com", "hafsasenoussa@gmail.com"]')
 ON CONFLICT (key) DO NOTHING;
+
+-- ==========================================
+-- 🛡️ جداول الحماية والأمان (Security Tables)
+-- ==========================================
+
+-- 6. جدول المسؤولين (Admins)
+CREATE TABLE IF NOT EXISTS admins (
+  id SERIAL PRIMARY KEY,
+  username TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL, -- كلمة المرور مشفرة
+  salt TEXT NOT NULL, -- مفتاح تشفير عشوائي لكل مستخدم
+  created_at BIGINT DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)
+);
+
+-- 7. جدول الجلسات النشطة (Active Sessions)
+CREATE TABLE IF NOT EXISTS admin_sessions (
+  token TEXT PRIMARY KEY,
+  admin_id INTEGER NOT NULL,
+  created_at BIGINT DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000),
+  expires_at BIGINT NOT NULL,
+  ip_address TEXT
+);
+
+-- 8. جدول محاولات الدخول الفاشلة (Brute Force Protection)
+CREATE TABLE IF NOT EXISTS login_attempts (
+  ip TEXT PRIMARY KEY,
+  attempts INTEGER DEFAULT 1,
+  last_attempt BIGINT,
+  blocked_until BIGINT DEFAULT 0
+);

@@ -1,14 +1,15 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getPool } from './_db.js';
+import { authenticateAdmin } from './_utils.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const db = getPool();
 
+  // Public Access: GET is allowed for everyone (The website needs to show news)
   if (req.method === 'GET') {
     try {
       const result = await db.query('SELECT * FROM news ORDER BY date DESC, created_at DESC');
-      // Convert media_urls array to proper structure if needed by frontend or ensure it matches
       const news = result.rows.map(row => ({
         id: row.id.toString(),
         title: row.title,
@@ -23,6 +24,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: 'Failed to fetch news' });
+    }
+  }
+
+  // 🔒 PROTECTED METHODS: POST (Add) and DELETE (Remove) require Admin Session
+  if (req.method === 'POST' || req.method === 'DELETE') {
+    const isAdmin = await authenticateAdmin(req);
+    if (!isAdmin) {
+       return res.status(401).json({ error: 'Unauthorized Access' });
     }
   }
 

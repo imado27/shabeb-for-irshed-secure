@@ -1,8 +1,15 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getPool } from './_db.js';
+import { authenticateAdmin } from './_utils.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // 🔒 SECURITY GATE: Validate Session for ALL requests to this endpoint
+  const isAdmin = await authenticateAdmin(req);
+  if (!isAdmin) {
+    return res.status(401).json({ error: 'Unauthorized Access - Session Invalid or Expired' });
+  }
+
   const db = getPool();
   const { type } = req.query;
 

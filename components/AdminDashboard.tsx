@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { uploadToCloudinary } from '../services/cloudinary';
-import { Newspaper, Users, LogOut, Plus, Loader2, Save, Search, Trash2, Eye, EyeOff, X, Menu as MenuIcon, ImagePlus, Lock, Phone, User, MapPin, Mail, Settings } from 'lucide-react';
+import { Newspaper, Users, LogOut, Plus, Loader2, Save, Trash2, Eye, EyeOff, X, ImagePlus, Lock, Phone, User, MapPin, Mail, Settings, ShieldCheck, AlertOctagon, ExternalLink } from 'lucide-react';
 
 const AdminDashboard: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -13,6 +13,12 @@ const AdminDashboard: React.FC = () => {
   const [isSecretRoute, setIsSecretRoute] = useState(false);
 
   useEffect(() => {
+    // Check for cached session
+    const token = localStorage.getItem('adminToken');
+    if (token) {
+        setIsAuthenticated(true);
+    }
+    
     if (window.location.hash === '#//admin') {
       setIsSecretRoute(true);
     } else {
@@ -41,16 +47,46 @@ const AdminDashboard: React.FC = () => {
   const [newEmail, setNewEmail] = useState('');
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
+  // Helper for Auth Headers
+  const getAuthHeaders = () => {
+      const token = localStorage.getItem('adminToken');
+      return {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+      };
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoggingIn(true);
-    // Simple authentication check (ideally this should be server-side too for real security)
-    if (username === 'admin' && password === '01012026') {
-      setIsAuthenticated(true);
-    } else {
-      setLoginError('بيانات الدخول غير صحيحة');
+    setLoginError('');
+
+    try {
+        const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+            localStorage.setItem('adminToken', data.token);
+            setIsAuthenticated(true);
+        } else {
+            setLoginError(data.error || 'خطأ في الدخول');
+        }
+    } catch (err) {
+        setLoginError('تعذر الاتصال بالخادم');
+    } finally {
+        setIsLoggingIn(false);
     }
-    setIsLoggingIn(false);
+  };
+
+  const handleLogout = () => {
+      localStorage.removeItem('adminToken');
+      setIsAuthenticated(false);
+      window.location.href = '/';
   };
 
   useEffect(() => {
@@ -64,43 +100,35 @@ const AdminDashboard: React.FC = () => {
   const fetchRegistrations = async () => {
     setLoadingReg(true);
     try {
-        const res = await fetch('/api/admin?type=registrations');
+        const res = await fetch('/api/admin?type=registrations', { headers: getAuthHeaders() });
+        if (res.status === 401) { handleLogout(); return; }
         if (res.ok) {
             const data = await res.json();
             setRegistrations(data);
         }
-    } catch (e) {
-        console.error(e);
-    } finally {
-        setLoadingReg(false);
-    }
+    } catch (e) { console.error(e); } finally { setLoadingReg(false); }
   };
 
   const fetchNews = async () => {
     setLoadingNewsList(true);
     try {
-        const res = await fetch('/api/news');
+        const res = await fetch('/api/news'); // Public GET
         if (res.ok) {
             const data = await res.json();
             setNewsList(data);
         }
-    } catch (e) {
-        console.error(e);
-    } finally {
-        setLoadingNewsList(false);
-    }
+    } catch (e) { console.error(e); } finally { setLoadingNewsList(false); }
   };
 
   const fetchSettings = async () => {
     try {
-        const res = await fetch('/api/admin?type=settings');
+        const res = await fetch('/api/admin?type=settings', { headers: getAuthHeaders() });
+        if (res.status === 401) { handleLogout(); return; }
         if (res.ok) {
             const data = await res.json();
             setEvaluationEmails(data);
         }
-    } catch (e) {
-        console.error(e);
-    }
+    } catch (e) { console.error(e); }
   };
 
   const handleAddEmail = () => {
@@ -119,9 +147,10 @@ const AdminDashboard: React.FC = () => {
     try {
       const res = await fetch('/api/admin?type=settings', {
           method: 'POST',
-          headers: {'Content-Type': 'application/json'},
+          headers: getAuthHeaders(),
           body: JSON.stringify({ emails: evaluationEmails })
       });
+      if (res.status === 401) { handleLogout(); return; }
       if (res.ok) alert("تم حفظ الإعدادات بنجاح");
       else alert("خطأ في حفظ الإعدادات");
     } catch (err) {
@@ -134,7 +163,8 @@ const AdminDashboard: React.FC = () => {
   const handleDeleteNews = async (id: string) => {
       if (window.confirm("حذف هذا الخبر؟")) {
           try {
-              await fetch(`/api/news?id=${id}`, { method: 'DELETE' });
+              const res = await fetch(`/api/news?id=${id}`, { method: 'DELETE', headers: getAuthHeaders() });
+              if (res.status === 401) { handleLogout(); return; }
               fetchNews();
           } catch(e) {
               alert("خطأ في الحذف");
@@ -157,7 +187,7 @@ const AdminDashboard: React.FC = () => {
       
       const res = await fetch('/api/news', {
           method: 'POST',
-          headers: {'Content-Type': 'application/json'},
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             title: newsTitle, 
             date: newsDate, 
@@ -169,6 +199,7 @@ const AdminDashboard: React.FC = () => {
           })
       });
 
+      if (res.status === 401) { handleLogout(); return; }
       if (!res.ok) throw new Error("API Error");
 
       alert("تم نشر الخبر بنجاح!");
@@ -177,67 +208,176 @@ const AdminDashboard: React.FC = () => {
     } catch (err: any) { alert(err.message || "خطأ في النشر"); } finally { setUploading(false); }
   };
 
-  if (!isSecretRoute) return <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 text-center p-6"><Lock size={64} className="text-gray-300 mb-4" /><h1 className="text-2xl font-black text-gray-800">الدخول غير مصرح به</h1></div>;
+  if (!isSecretRoute) return <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 text-center p-6"><AlertOctagon size={80} className="text-red-500 mb-6" /><h1 className="text-3xl font-black text-gray-900 mb-2">منطقة محظورة</h1><p className="text-gray-500">تم تسجيل محاولة الدخول غير المصرح به.</p></div>;
 
-  if (!isAuthenticated) return <div className="min-h-screen bg-[#7e1d51] flex items-center justify-center p-4 font-sans"><div className="bg-white p-8 md:p-12 rounded-3xl shadow-2xl w-full max-w-md"><h1 className="text-2xl font-black text-[#7e1d51] text-center mb-10">لوحة التحكم السرية</h1><form onSubmit={handleLogin} className="space-y-5"><input type="text" value={username} onChange={e => setUsername(e.target.value)} className="w-full bg-gray-50 border p-4 rounded-xl outline-none" placeholder="اسم المستخدم" /><div className="relative"><input type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-gray-50 border p-4 rounded-xl outline-none pr-12" placeholder="كلمة المرور" /><button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">{showPassword ? <EyeOff size={20} /> : <Eye size={20} />}</button></div>{loginError && <p className="text-red-600 text-sm text-center font-bold">{loginError}</p>}<button type="submit" disabled={isLoggingIn} className="w-full py-4 bg-[#7e1d51] text-white font-black rounded-xl hover:bg-[#5e153b] transition-all">{isLoggingIn ? <Loader2 className="animate-spin mx-auto" /> : 'دخول للمنصة'}</button></form></div></div>;
+  if (!isAuthenticated) return (
+      <div className="min-h-screen bg-gradient-to-br from-[#7e1d51] to-[#4a1130] flex items-center justify-center p-4 font-sans relative overflow-hidden">
+          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-20"></div>
+          <div className="bg-white/95 backdrop-blur-xl p-8 md:p-12 rounded-[2rem] shadow-2xl w-full max-w-md relative z-10 border border-white/20">
+              <div className="flex justify-center mb-8">
+                  <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center shadow-inner">
+                      <ShieldCheck size={40} className="text-[#7e1d51]" />
+                  </div>
+              </div>
+              <h1 className="text-2xl font-black text-[#1a0510] text-center mb-2">لوحة القيادة المؤمنة</h1>
+              <p className="text-gray-400 text-center text-xs mb-8">شباب فور إرشاد - الوصول للمسؤولين فقط</p>
+              
+              <form onSubmit={handleLogin} className="space-y-5">
+                  <div className="space-y-1">
+                      <label className="text-xs font-bold text-gray-500 mr-2">اسم المستخدم</label>
+                      <input type="text" value={username} onChange={e => setUsername(e.target.value)} className="w-full bg-gray-50 border border-gray-200 focus:border-[#7e1d51] p-4 rounded-xl outline-none transition-all font-bold" required />
+                  </div>
+                  <div className="space-y-1">
+                      <label className="text-xs font-bold text-gray-500 mr-2">كلمة المرور</label>
+                      <div className="relative">
+                          <input type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-gray-50 border border-gray-200 focus:border-[#7e1d51] p-4 rounded-xl outline-none pr-12 transition-all font-bold" required />
+                          <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">{showPassword ? <EyeOff size={20} /> : <Eye size={20} />}</button>
+                      </div>
+                  </div>
+                  
+                  {loginError && (
+                      <div className="bg-red-50 text-red-600 p-3 rounded-xl text-xs font-bold text-center border border-red-100 flex items-center justify-center gap-2">
+                          <AlertOctagon size={14} /> {loginError}
+                      </div>
+                  )}
+                  
+                  <button type="submit" disabled={isLoggingIn} className="w-full py-4 bg-[#7e1d51] text-white font-black rounded-xl hover:bg-[#5e153b] transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-1">
+                      {isLoggingIn ? <Loader2 className="animate-spin mx-auto" /> : 'تسجيل الدخول الآمن'}
+                  </button>
+              </form>
+          </div>
+      </div>
+  );
 
   return (
     <div className="min-h-screen bg-[#f3f4f6] flex font-sans" dir="rtl">
-      <aside className={`w-72 bg-white fixed h-full right-0 z-40 border-l shadow-sm transition-transform md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : 'translate-x-full'}`}>
-        <div className="p-8 border-b"><h2 className="text-lg font-black text-[#7e1d51]">لوحة القيادة</h2></div>
+      {/* Sidebar */}
+      <aside className={`w-72 bg-white fixed h-full right-0 z-40 border-l border-gray-100 shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-transform md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+        <div className="p-8 border-b border-gray-50 bg-[#fafafa]">
+            <h2 className="text-xl font-black text-[#7e1d51] flex items-center gap-2"><Lock size={18} /> منطقة الإدارة</h2>
+            <p className="text-gray-400 text-[10px] mt-1 font-bold">جلسة مؤمنة ومشفرة</p>
+        </div>
         <nav className="p-6 space-y-4">
-          <button onClick={() => setActiveTab('news')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl ${activeTab === 'news' ? 'bg-[#7e1d51] text-white' : 'text-gray-500 hover:bg-gray-50'}`}><Newspaper size={20} /> <span className="font-bold">الأخبار</span></button>
-          <button onClick={() => setActiveTab('registrations')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl ${activeTab === 'registrations' ? 'bg-[#7e1d51] text-white' : 'text-gray-500 hover:bg-gray-50'}`}><Users size={20} /> <span className="font-bold">المنخرطين</span></button>
-          <button onClick={() => setActiveTab('settings')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl ${activeTab === 'settings' ? 'bg-[#7e1d51] text-white' : 'text-gray-500 hover:bg-gray-50'}`}><Settings size={20} /> <span className="font-bold">إعدادات الإيميل</span></button>
+          <button onClick={() => setActiveTab('news')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 ${activeTab === 'news' ? 'bg-[#7e1d51] text-white shadow-lg shadow-[#7e1d51]/20' : 'text-gray-500 hover:bg-gray-50 hover:text-[#7e1d51]'}`}><Newspaper size={20} /> <span className="font-bold">إدارة الأخبار</span></button>
+          <button onClick={() => setActiveTab('registrations')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 ${activeTab === 'registrations' ? 'bg-[#7e1d51] text-white shadow-lg shadow-[#7e1d51]/20' : 'text-gray-500 hover:bg-gray-50 hover:text-[#7e1d51]'}`}><Users size={20} /> <span className="font-bold">قائمة المنخرطين</span></button>
+          <button onClick={() => setActiveTab('settings')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 ${activeTab === 'settings' ? 'bg-[#7e1d51] text-white shadow-lg shadow-[#7e1d51]/20' : 'text-gray-500 hover:bg-gray-50 hover:text-[#7e1d51]'}`}><Settings size={20} /> <span className="font-bold">إعدادات النظام</span></button>
         </nav>
-        <div className="p-6 border-t mt-auto"><button onClick={() => window.location.href = '/'} className="flex items-center gap-3 text-red-500 w-full p-4 font-bold"><LogOut size={18} /> خروج</button></div>
+        <div className="p-6 border-t border-gray-50 mt-auto">
+            <button onClick={handleLogout} className="flex items-center gap-3 text-red-500 w-full p-4 font-bold bg-red-50 rounded-2xl hover:bg-red-100 transition-colors"><LogOut size={18} /> إنهاء الجلسة</button>
+        </div>
       </aside>
 
-      <main className="flex-1 p-4 md:p-10 md:mr-72 w-full">
+      <main className="flex-1 p-4 md:p-10 md:mr-72 w-full max-w-[1600px]">
         {activeTab === 'news' && (
-          <div className="space-y-10">
-            <div className="bg-white rounded-[2rem] p-6 md:p-10 shadow-sm border"><h2 className="text-xl font-bold mb-8">إضافة خبر جديد</h2><form onSubmit={handlePostNews} className="space-y-6"><input type="text" value={newsTitle} onChange={e => setNewsTitle(e.target.value)} className="w-full p-4 bg-gray-50 border rounded-2xl outline-none" placeholder="عنوان الخبر..." required /><div className="grid grid-cols-2 gap-4"><input type="date" value={newsDate} onChange={e => setNewsDate(e.target.value)} className="w-full p-4 bg-gray-50 border rounded-2xl outline-none" required /><select value={newsCategory} onChange={e => setNewsCategory(e.target.value)} className="w-full p-4 bg-gray-50 border rounded-2xl outline-none"><option>عام</option><option>نشاط خيري</option><option>دورة تكوينية</option></select></div><textarea rows={4} value={newsDesc} onChange={e => setNewsDesc(e.target.value)} className="w-full p-4 bg-gray-50 border rounded-2xl outline-none" placeholder="التفاصيل..." required /><div className="border-2 border-dashed rounded-3xl p-6 text-center relative hover:bg-gray-50"><input type="file" multiple onChange={e => setNewsFiles(e.target.files)} className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*,video/*" /><ImagePlus className="mx-auto text-gray-400 mb-2" /><span className="text-gray-500 font-bold">{newsFiles ? `${newsFiles.length} ملفات` : 'اختر الوسائط'}</span></div><button type="submit" disabled={uploading} className="w-full py-4 bg-[#7e1d51] text-white font-black rounded-2xl shadow-lg flex justify-center items-center gap-2">{uploading ? <Loader2 className="animate-spin" /> : <Save size={20} />}{uploading ? 'جاري الرفع...' : 'نشر الخبر'}</button></form></div>
-            <div className="bg-white rounded-[2rem] p-6 border shadow-sm"><h3 className="font-bold mb-4">الأخبار المنشورة</h3><div className="space-y-3">{newsList.map(item => (<div key={item.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-xl border"><span className="font-bold text-sm">{item.title}</span><button onClick={() => handleDeleteNews(item.id)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg"><Trash2 size={18} /></button></div>))}</div></div>
+          <div className="space-y-10 animate-fadeInUp">
+            <div className="bg-white rounded-[2.5rem] p-8 md:p-12 shadow-sm border border-gray-100"><h2 className="text-2xl font-black text-gray-800 mb-8 flex items-center gap-3"><Plus className="bg-[#fcd34d] rounded-full p-1 text-[#7e1d51]" /> إضافة خبر جديد</h2><form onSubmit={handlePostNews} className="space-y-6"><input type="text" value={newsTitle} onChange={e => setNewsTitle(e.target.value)} className="w-full p-5 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-[#7e1d51] transition-all font-bold" placeholder="عنوان الخبر الرئيسي..." required /><div className="grid grid-cols-2 gap-4"><input type="date" value={newsDate} onChange={e => setNewsDate(e.target.value)} className="w-full p-5 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-[#7e1d51] transition-all" required /><select value={newsCategory} onChange={e => setNewsCategory(e.target.value)} className="w-full p-5 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-[#7e1d51] transition-all font-bold cursor-pointer"><option>عام</option><option>نشاط خيري</option><option>دورة تكوينية</option></select></div><textarea rows={5} value={newsDesc} onChange={e => setNewsDesc(e.target.value)} className="w-full p-5 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-[#7e1d51] transition-all resize-none" placeholder="اكتب تفاصيل الخبر هنا..." required /><div className="border-2 border-dashed border-gray-300 rounded-[2rem] p-10 text-center relative hover:bg-gray-50 transition-colors group"><input type="file" multiple onChange={e => setNewsFiles(e.target.files)} className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*,video/*" /><div className="w-16 h-16 bg-pink-50 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform"><ImagePlus className="text-[#7e1d51]" size={28} /></div><span className="text-gray-500 font-bold block">{newsFiles ? `تم اختيار ${newsFiles.length} ملفات` : 'اسحب الصور أو اضغط هنا للرفع'}</span><p className="text-xs text-gray-400 mt-2">يدعم الصور (JPG, PNG) والفيديو (MP4)</p></div><button type="submit" disabled={uploading} className="w-full py-5 bg-[#7e1d51] text-white font-black rounded-2xl shadow-xl hover:shadow-2xl hover:scale-[1.01] transition-all flex justify-center items-center gap-3 text-lg">{uploading ? <Loader2 className="animate-spin" /> : <Save size={24} />}{uploading ? 'جاري رفع الملفات وتأمين البيانات...' : 'نشر الخبر فوراً'}</button></form></div>
+            <div className="bg-white rounded-[2.5rem] p-8 border border-gray-100 shadow-sm"><h3 className="font-black text-xl text-gray-800 mb-6 px-2">الأرشيف المنشور</h3><div className="space-y-3">{newsList.map(item => (<div key={item.id} className="flex justify-between items-center p-5 bg-gray-50/50 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-md transition-all group"><span className="font-bold text-gray-700">{item.title}</span><button onClick={() => handleDeleteNews(item.id)} className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18} /></button></div>))}</div></div>
           </div>
         )}
 
         {activeTab === 'registrations' && (
-          <div className="bg-white rounded-[2rem] p-6 border shadow-sm overflow-x-auto"><table className="w-full text-right min-w-[600px]"><thead className="bg-gray-50 text-xs text-gray-400"><tr><th className="p-4">الاسم</th><th className="p-4">الولاية</th><th className="p-4">الهاتف</th><th className="p-4">إجراء</th></tr></thead><tbody className="text-sm">{registrations.map(reg => (<tr key={reg.id} className="border-t hover:bg-gray-50 transition-colors"><td className="p-4 font-bold">{reg.fullName}</td><td className="p-4">{reg.wilaya}</td><td className="p-4 font-mono">{reg.phone}</td><td className="p-4"><button onClick={() => setSelectedReg(reg)} className="text-[#7e1d51] font-bold">عرض</button></td></tr>))}</tbody></table></div>
+          <div className="bg-white rounded-[2.5rem] p-8 border border-gray-100 shadow-sm overflow-hidden animate-fadeInUp">
+             <div className="overflow-x-auto">
+                 <table className="w-full text-right min-w-[700px] border-collapse">
+                     <thead>
+                         <tr className="border-b border-gray-100">
+                             <th className="p-5 text-gray-400 text-xs font-bold uppercase tracking-wider">الاسم الكامل</th>
+                             <th className="p-5 text-gray-400 text-xs font-bold uppercase tracking-wider">الولاية</th>
+                             <th className="p-5 text-gray-400 text-xs font-bold uppercase tracking-wider">رقم الهاتف</th>
+                             <th className="p-5 text-gray-400 text-xs font-bold uppercase tracking-wider">الإجراء</th>
+                         </tr>
+                     </thead>
+                     <tbody className="text-sm">
+                         {registrations.map((reg, idx) => (
+                             <tr key={reg.id} className={`hover:bg-gray-50 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-[#fafafa]'}`}>
+                                 <td className="p-5 font-bold text-gray-800">{reg.fullName}</td>
+                                 <td className="p-5 text-gray-600">{reg.wilaya}</td>
+                                 <td className="p-5 font-mono text-[#7e1d51] font-bold">{reg.phone}</td>
+                                 <td className="p-5"><button onClick={() => setSelectedReg(reg)} className="px-4 py-2 bg-pink-50 text-[#7e1d51] rounded-xl font-bold hover:bg-[#7e1d51] hover:text-white transition-all text-xs">عرض الملف</button></td>
+                             </tr>
+                         ))}
+                     </tbody>
+                 </table>
+             </div>
+          </div>
         )}
 
         {activeTab === 'settings' && (
-          <div className="bg-white rounded-[2rem] p-10 border shadow-sm max-w-2xl mx-auto animate-fadeInUp">
-            <h2 className="text-2xl font-black text-[#7e1d51] mb-8 flex items-center gap-3"><Mail /> إعدادات استقبال التقييمات</h2>
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-gray-500">قائمة الإيميلات المستقبلة</label>
-                <div className="space-y-2">
+          <div className="bg-white rounded-[2.5rem] p-10 border border-gray-100 shadow-sm max-w-3xl mx-auto animate-fadeInUp">
+            <h2 className="text-2xl font-black text-[#7e1d51] mb-2 flex items-center gap-3"><ShieldCheck size={28} /> الحماية والإشعارات</h2>
+            <p className="text-gray-400 text-sm mb-8 border-b border-gray-100 pb-8">إدارة بروتوكولات الأمان وقوائم البريد الإلكتروني المصرح لها باستلام التقييمات.</p>
+            
+            <div className="space-y-8">
+              <div className="space-y-4">
+                <label className="text-sm font-bold text-gray-700 flex items-center gap-2"><Mail size={16} /> القائمة البيضاء للإيميلات (Whitelist)</label>
+                <div className="space-y-3">
                   {evaluationEmails.map(email => (
-                    <div key={email} className="flex justify-between items-center p-4 bg-gray-50 rounded-xl border group">
-                      <span className="font-bold text-gray-700">{email}</span>
-                      <button onClick={() => handleRemoveEmail(email)} className="text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all"><X size={18} /></button>
+                    <div key={email} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-100 group hover:border-[#7e1d51] transition-colors">
+                      <span className="font-bold text-gray-700 font-mono text-sm">{email}</span>
+                      <button onClick={() => handleRemoveEmail(email)} className="text-gray-300 hover:text-red-500 transition-colors"><X size={18} /></button>
                     </div>
                   ))}
                 </div>
               </div>
-              <div className="flex gap-2">
-                <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} className="flex-1 p-4 bg-gray-50 border rounded-xl outline-none focus:border-[#7e1d51]" placeholder="أضف إيميل جديد..." />
-                <button onClick={handleAddEmail} className="px-6 py-4 bg-[#7e1d51] text-white font-bold rounded-xl hover:bg-[#5e153b]"><Plus /></button>
+              <div className="flex gap-3">
+                <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} className="flex-1 p-4 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-[#7e1d51] transition-all font-bold" placeholder="أضف بريد إلكتروني مسؤول..." />
+                <button onClick={handleAddEmail} className="px-6 py-4 bg-[#1a0510] text-white font-bold rounded-2xl hover:scale-105 transition-all"><Plus /></button>
               </div>
-              <button onClick={handleSaveSettings} disabled={isSavingSettings} className="w-full py-4 bg-[#1a0510] text-white font-black rounded-xl shadow-lg flex justify-center items-center gap-2">
-                {isSavingSettings ? <Loader2 className="animate-spin" /> : <Save size={20} />}
-                {isSavingSettings ? 'جاري الحفظ...' : 'حفظ الإعدادات'}
-              </button>
+              <div className="pt-8 border-t border-gray-100">
+                  <button onClick={handleSaveSettings} disabled={isSavingSettings} className="w-full py-4 bg-[#7e1d51] text-white font-black rounded-2xl shadow-lg hover:shadow-xl transition-all flex justify-center items-center gap-3">
+                    {isSavingSettings ? <Loader2 className="animate-spin" /> : <Save size={20} />}
+                    {isSavingSettings ? 'جاري تحديث البروتوكولات...' : 'حفظ التغييرات الأمنية'}
+                  </button>
+              </div>
             </div>
           </div>
         )}
       </main>
 
+      {/* Modal for User Details */}
       {selectedReg && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setSelectedReg(null)}><div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-8 relative animate-fadeInUp shadow-2xl" onClick={e => e.stopPropagation()}><button onClick={() => setSelectedReg(null)} className="absolute top-6 left-6 p-2 bg-gray-100 rounded-full hover:bg-gray-200"><X size={20} /></button><div className="flex items-center gap-4 mb-8"><div className="w-16 h-16 bg-pink-50 rounded-2xl flex items-center justify-center"><User size={32} className="text-[#7e1d51]" /></div><div><h2 className="text-2xl font-black text-[#7e1d51] leading-none">{selectedReg.fullName}</h2><p className="text-gray-400 text-sm mt-2">تاريخ التسجيل: {new Date(selectedReg.timestamp).toLocaleDateString('ar-DZ')}</p></div></div><div className="space-y-8"><div className="bg-gray-50/50 p-6 rounded-[1.5rem] border"><h3 className="text-xs font-bold text-gray-400 uppercase mb-4 flex items-center gap-2"><MapPin size={14} /> المعلومات الشخصية</h3><div className="grid grid-cols-2 gap-4 text-sm"><div className="bg-white p-4 rounded-xl shadow-sm border"><span className="text-gray-400 block mb-1">تاريخ الميلاد</span><span className="font-bold text-gray-800">{selectedReg.birthDate}</span></div><div className="bg-white p-4 rounded-xl shadow-sm border"><span className="text-gray-400 block mb-1">مكان الميلاد</span><span className="font-bold text-gray-800">{selectedReg.birthPlace}</span></div><div className="bg-white p-4 rounded-xl shadow-sm border col-span-2"><span className="text-gray-400 block mb-1">العنوان الكامل</span><span className="font-bold text-gray-800">{selectedReg.wilaya} - {selectedReg.address}</span></div></div></div><div className="bg-gray-50/50 p-6 rounded-[1.5rem] border"><h3 className="text-xs font-bold text-gray-400 uppercase mb-4 flex items-center gap-2"><Phone size={14} /> التواصل</h3><div className="grid grid-cols-2 gap-4 text-sm"><div className="bg-white p-4 rounded-xl shadow-sm border"><span className="text-gray-400 block mb-1">الهاتف</span><span className="font-black text-[#7e1d51] font-mono text-lg">{selectedReg.phone}</span></div><div className="bg-white p-4 rounded-xl shadow-sm border"><span className="text-gray-400 block mb-1">فيسبوك</span>{selectedReg.facebookLink ? (<a href={selectedReg.facebookLink} target="_blank" className="text-blue-600 font-bold">رابط الحساب</a>) : <span>غير متوفر</span>}</div></div></div></div></div></div>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#1a0510]/80 backdrop-blur-md p-4 animate-fadeInUp" onClick={() => setSelectedReg(null)}>
+            <div className="bg-white rounded-[2.5rem] w-full max-w-2xl max-h-[90vh] overflow-y-auto p-8 relative shadow-2xl border-4 border-white/10" onClick={e => e.stopPropagation()}>
+                <button onClick={() => setSelectedReg(null)} className="absolute top-6 left-6 w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors"><X size={20} /></button>
+                <div className="flex items-center gap-5 mb-10 border-b border-gray-100 pb-8">
+                    <div className="w-20 h-20 bg-gradient-to-br from-[#7e1d51] to-[#b92b72] rounded-[1.5rem] flex items-center justify-center shadow-lg text-white font-black text-2xl">
+                        {selectedReg.fullName.charAt(0)}
+                    </div>
+                    <div>
+                        <h2 className="text-3xl font-black text-gray-900 leading-none mb-2">{selectedReg.fullName}</h2>
+                        <div className="flex gap-3">
+                             <span className="px-3 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-bold">منخرط نشط</span>
+                             <span className="px-3 py-1 bg-gray-100 text-gray-500 rounded-lg text-xs font-bold flex items-center gap-1"><MapPin size={12} /> {selectedReg.wilaya}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div className="space-y-8">
+                    <div className="bg-gray-50 rounded-[2rem] p-6 border border-gray-100">
+                        <h3 className="text-xs font-black text-gray-400 uppercase mb-5 flex items-center gap-2"><User size={14} /> البيانات الشخصية</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                             <div className="bg-white p-4 rounded-2xl shadow-sm"><span className="block text-gray-400 text-[10px] mb-1">تاريخ الميلاد</span><span className="font-bold text-gray-800">{selectedReg.birthDate}</span></div>
+                             <div className="bg-white p-4 rounded-2xl shadow-sm"><span className="block text-gray-400 text-[10px] mb-1">مكان الميلاد</span><span className="font-bold text-gray-800">{selectedReg.birthPlace}</span></div>
+                             <div className="bg-white p-4 rounded-2xl shadow-sm col-span-2"><span className="block text-gray-400 text-[10px] mb-1">العنوان الكامل</span><span className="font-bold text-gray-800">{selectedReg.address}</span></div>
+                        </div>
+                    </div>
+
+                    <div className="bg-gray-50 rounded-[2rem] p-6 border border-gray-100">
+                        <h3 className="text-xs font-black text-gray-400 uppercase mb-5 flex items-center gap-2"><Phone size={14} /> قنوات الاتصال</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200"><span className="block text-gray-400 text-[10px] mb-1">الهاتف المحمول</span><span className="font-black text-[#7e1d51] font-mono text-lg">{selectedReg.phone}</span></div>
+                             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex items-center justify-center">
+                                 {selectedReg.facebookLink ? (<a href={selectedReg.facebookLink} target="_blank" className="text-blue-600 font-bold hover:underline flex items-center gap-2">فتح الفيسبوك <ExternalLink size={14} /></a>) : <span className="text-gray-400 text-sm font-bold">غير متوفر</span>}
+                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
       )}
     </div>
   );
 };
 
 export default AdminDashboard;
+    
