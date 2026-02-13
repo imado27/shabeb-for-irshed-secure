@@ -25,9 +25,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const countRes = await db.query('SELECT count(*) FROM admins');
     
     if (parseInt(countRes.rows[0].count) === 0) {
-      // 🔥 FIX: Use Environment Variables for Initial Admin Creds
+      // 🔥 FIX: Strictly Use Environment Variables for Initial Admin Creds
+      // No hardcoded passwords allowed here anymore.
       const initUser = process.env.ADMIN_INIT_USER || 'admin';
-      const initPass = process.env.ADMIN_INIT_PASSWORD; // Must be set in Vercel Env Vars
+      const initPass = process.env.ADMIN_INIT_PASSWORD; 
 
       if (initPass && username === initUser && password === initPass) {
         const { hash, salt } = hashPassword(initPass);
@@ -37,17 +38,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         );
         // Continue to login...
       } else {
-        // Fallback for emergency (Only if ENV var is not set, to prevent lockout during dev)
-        // Ideally, you should remove this 'else if' block in production
-        if (!initPass && username === 'admin' && password === '01012026') {
-             const { hash, salt } = hashPassword('01012026');
-             await db.query(
-               'INSERT INTO admins (username, password_hash, salt) VALUES ($1, $2, $3)',
-               ['admin', hash, salt]
-             );
-        } else {
-             return res.status(401).json({ error: 'النظام غير مهيأ. يرجى الدخول ببيانات المدير الافتراضي.' });
-        }
+         // If env vars are not set or credentials don't match, block access.
+         return res.status(401).json({ error: 'النظام غير مهيأ. يرجى ضبط متغيرات البيئة (ADMIN_INIT_PASSWORD).' });
       }
     }
 

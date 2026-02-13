@@ -2,6 +2,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import nodemailer from 'nodemailer';
 import { getPool } from './_db.js';
+import { getClientIp } from './_utils.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -11,6 +12,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const db = getPool();
+    const userIp = getClientIp(req);
+    const now = Date.now();
+
+    // 🔥 SECURITY: Rate Limiting Check (10 Minutes Cooldown for Evaluations)
+    const COOLDOWN_PERIOD = 10 * 60 * 1000; // 10 Minutes
+    const rateCheck = await db.query('SELECT timestamp FROM rate_limits WHERE uid = $1 AND type = $2', [userIp, 'email_evaluation']);
+    
+    if (rateCheck.rows.length > 0) {
+      const lastTime = parseInt(rateCheck.rows[0].timestamp);
+      if (now - lastTime < COOLDOWN_PERIOD) {
+        const remainingMinutes = Math.ceil((COOLDOWN_PERIOD - (now - lastTime)) / 60000);
+        return res.status(429).json({ error: `يرجى الانتظار ${remainingMinutes} دقيقة قبل إرسال تقييم آخر.` });
+      }
+    }
 
     // 1. جلب قائمة الإيميلات من Postgres
     const settingsRes = await db.query("SELECT value FROM settings WHERE key = 'evaluation_emails'");
@@ -93,6 +108,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       subject: subjectLine,
       html: htmlContent,
     });
+
+    // 🔥 SECURITY: Update Rate Limits
+    await db.query(
+      `INSERT INTO rate_limits (uid, type, timestamp) VALUES ($1, $2, $3)
+       ON CONFLICT (uid, type) DO UPDATE SET timestamp = $3`,
+      [userIp, 'email_evaluation', now]
+    );
 
     return res.status(200).json({ success: true });
   } catch (error: any) {
