@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS news (
   created_at BIGINT DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)
 );
 
--- 2. جدول التسجيلات f(Registrations)
+-- 2. جدول التسجيلات (Registrations)
 CREATE TABLE IF NOT EXISTS registrations (
   id SERIAL PRIMARY KEY,
   uid TEXT, -- للاحتفاظ بالمرجع إذا لزم الأمر
