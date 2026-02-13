@@ -22,7 +22,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // We use a stateless approach here for simplicity, or we could pass history from frontend if needed
     // For this implementation, we re-initialize the chat with the system instruction.
     const chat = ai.chats.create({
-      model: 'gemini-2.0-flash', // Using a fast, standard model
+      model: 'gemma-3-27b-it', // Using a fast, standard model
       config: {
         systemInstruction: `أنت مساعد ذكي ومحفز للشباب تابع لجمعية "شباب فور إرشاد".
             شخصيتك: ودود، حكيم، محفز، وتتحدث بأسلوب شبابي راقٍ ومحترم.
