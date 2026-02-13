@@ -1,16 +1,51 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Send, CheckCircle, AlertCircle, Loader2, Star, MessageSquare, Clock, Users, ThumbsUp, User, Phone, ChevronLeft, ChevronRight, Award } from 'lucide-react';
 
 const WorkshopEvaluation: React.FC = () => {
   const [step, setStep] = useState(1);
   const [personalInfo, setPersonalInfo] = useState({ firstName: '', lastName: '', phone: '' });
+  
+  // State for Dynamic Workshop
+  const [loading, setLoading] = useState(true);
+  const [workshopData, setWorkshopData] = useState<any>(null);
+  const [dynamicResponses, setDynamicResponses] = useState<Record<string, string>>({});
+
+  // Fallback / Hardcoded State (For Studio 1)
+  const [isLegacy, setIsLegacy] = useState(false);
   const [formData, setFormData] = useState({
     q1: '', q2: '', q3_clarity: '', q3_interaction: '', q3_delivery: '', q4: '', q5: '', q7: ''
   });
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+      const search = new URLSearchParams(window.location.search);
+      const studioId = search.get('studio');
+
+      if (!studioId || studioId === '1') {
+          setIsLegacy(true);
+          setLoading(false);
+      } else {
+          // Fetch dynamic workshop data
+          fetch(`/api/get-workshop?id=${studioId}`)
+              .then(res => res.json())
+              .then(data => {
+                  if (data.error) {
+                      // Fallback to legacy if not found or error, or show error? 
+                      // For safety, if error, we might show "Workshop Not Found" or fallback to default
+                      setIsLegacy(true); 
+                  } else {
+                      setWorkshopData(data);
+                      setIsLegacy(false);
+                  }
+              })
+              .catch(() => setIsLegacy(true))
+              .finally(() => setLoading(false));
+      }
+  }, []);
 
   const validateStep1 = () => {
     if (!personalInfo.firstName.trim() || !personalInfo.lastName.trim()) return "يرجى إدخال الاسم واللقب.";
@@ -34,22 +69,37 @@ const WorkshopEvaluation: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.q1 || !formData.q3_clarity || !formData.q3_interaction || !formData.q3_delivery || !formData.q4 || !formData.q7) {
-      setError("يرجى الإجابة على جميع الأسئلة ذات الخيارات للمتابعة.");
-      return;
+
+    let payload: any = { participant: personalInfo };
+
+    if (isLegacy) {
+        if (!formData.q1 || !formData.q3_clarity || !formData.q3_interaction || !formData.q3_delivery || !formData.q4 || !formData.q7) {
+            setError("يرجى الإجابة على جميع الأسئلة ذات الخيارات للمتابعة.");
+            return;
+        }
+        payload.responses = {
+            ...formData,
+            q2: sanitizeText(formData.q2),
+            q5: sanitizeText(formData.q5)
+        };
+        payload.isDynamic = false;
+    } else {
+        // Validate Dynamic Form
+        // Check if all radio questions are answered
+        const radioQuestions = workshopData.questions.filter((q: any) => q.type === 'radio');
+        for (const q of radioQuestions) {
+            if (!dynamicResponses[q.text]) {
+                setError(`يرجى الإجابة على السؤال: ${q.text}`);
+                return;
+            }
+        }
+        payload.responses = dynamicResponses;
+        payload.isDynamic = true;
+        payload.workshopTitle = workshopData.title;
     }
 
     setIsSubmitting(true);
     setError(null);
-
-    const payload = {
-      participant: personalInfo,
-      responses: {
-        ...formData,
-        q2: sanitizeText(formData.q2),
-        q5: sanitizeText(formData.q5)
-      }
-    };
 
     try {
       const response = await fetch('/api/send-email', {
@@ -70,6 +120,10 @@ const WorkshopEvaluation: React.FC = () => {
       setIsSubmitting(false);
     }
   };
+
+  if (loading) {
+      return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#7e1d51] w-10 h-10" /></div>;
+  }
 
   if (isSuccess) {
     return (
@@ -96,7 +150,7 @@ const WorkshopEvaluation: React.FC = () => {
         <div className="glass-card p-2 rounded-[2.5rem] mb-8 shadow-2xl overflow-hidden border border-white/40">
            <div className="aspect-[16/9] md:aspect-[21/9] w-full bg-gray-50 rounded-[2rem] overflow-hidden">
               <img 
-                src="https://res.cloudinary.com/dxqbn7i5l/image/upload/v1770433939/u8glfvii0uzzgiw6hzwr.jpg" 
+                src={!isLegacy && workshopData?.heroImage ? workshopData.heroImage : "https://res.cloudinary.com/dxqbn7i5l/image/upload/v1770433939/u8glfvii0uzzgiw6hzwr.jpg"} 
                 alt="Workshop Hero" 
                 className="w-full h-full object-contain"
               />
@@ -109,12 +163,14 @@ const WorkshopEvaluation: React.FC = () => {
             <p className="text-gray-500 text-sm font-bold mb-4">بلدية بن عبد المالك رمضان</p>
             <div className="h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent mb-6"></div>
             <h1 className="text-2xl md:text-3xl font-black text-[#1a0510] mb-3 leading-tight">
-               📌 استمارة تقييم ورشة العمل التطوعي
+               {!isLegacy && workshopData?.title ? `📌 ${workshopData.title}` : "📌 استمارة تقييم ورشة العمل التطوعي"}
             </h1>
             <p className="text-[#7e1d51] font-bold text-lg mb-4 italic">"العمل التطوعي: شباب مجتمعي – تطوع شبابي – تطور"</p>
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-pink-50 rounded-full border border-pink-100">
                <Award className="text-[#7e1d51]" size={18} />
-               <span className="text-[#7e1d51] font-black">اسم الأستاذ: #محمد_شهري</span>
+               <span className="text-[#7e1d51] font-black">
+                   {!isLegacy && workshopData?.instructor ? `اسم الأستاذ: ${workshopData.instructor}` : "اسم الأستاذ: #محمد_شهري"}
+               </span>
             </div>
         </div>
 
@@ -168,92 +224,126 @@ const WorkshopEvaluation: React.FC = () => {
           ) : (
             <form onSubmit={handleSubmit} className="space-y-10 animate-fadeInUp">
               
-              {/* Q1 */}
-              <div className="space-y-4">
-                <label className="text-lg font-bold text-[#1a0510] flex items-center gap-3 border-r-4 border-[#7e1d51] pr-3">
-                  1️⃣ كيف كان انطباعك العام عن الورشة؟
-                </label>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {['ممتاز', 'جيد جدًا', 'جيد', 'مقبول'].map(opt => (
-                    <label key={opt} className={`cursor-pointer p-4 rounded-2xl border-2 text-center font-bold transition-all shadow-sm ${formData.q1 === opt ? 'border-[#7e1d51] bg-[#7e1d51] text-white' : 'border-white/40 bg-white/50 text-gray-500 hover:bg-white/80'}`}>
-                      <input type="radio" name="q1" value={opt} onChange={e => setFormData({...formData, q1: e.target.value})} className="hidden" />
-                      {opt}
+              {isLegacy ? (
+                <>
+                  {/* ... Legacy Hardcoded Questions (Identical to original) ... */}
+                  <div className="space-y-4">
+                    <label className="text-lg font-bold text-[#1a0510] flex items-center gap-3 border-r-4 border-[#7e1d51] pr-3">
+                      1️⃣ كيف كان انطباعك العام عن الورشة؟
                     </label>
-                  ))}
-                </div>
-              </div>
-
-              {/* Q2 */}
-              <div className="space-y-4">
-                <label className="text-lg font-bold text-[#1a0510] flex items-center gap-3 border-r-4 border-[#7e1d51] pr-3">
-                  2️⃣ ما أكثر شيء أعجبك في الورشة؟
-                </label>
-                <textarea rows={4} className="glass-input resize-none" value={formData.q2} onChange={e => setFormData({...formData, q2: e.target.value})} placeholder="اكتب ما لفت انتباهك بكل صراحة..."></textarea>
-              </div>
-
-              {/* Q3 */}
-              <div className="space-y-6">
-                <label className="text-lg font-bold text-[#1a0510] flex items-center gap-3 border-r-4 border-[#7e1d51] pr-3">
-                  3️⃣ كيف تقيّم أداء الأستاذ المحاضر من حيث:
-                </label>
-                <div className="space-y-6">
-                  {[
-                    { key: 'q3_clarity', label: 'وضوح الشرح' },
-                    { key: 'q3_interaction', label: 'التفاعل مع الحضور' },
-                    { key: 'q3_delivery', label: 'إيصال الفكرة' }
-                  ].map(sub => (
-                    <div key={sub.key} className="p-5 bg-white/30 rounded-2xl border border-white/40">
-                      <p className="font-bold text-gray-700 mb-4 text-sm">{sub.label}</p>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                        {['ممتاز', 'جيد', 'متوسط', 'يحتاج تحسين'].map(opt => (
-                          <label key={opt} className={`cursor-pointer p-3 rounded-xl border text-xs text-center font-bold transition-all ${formData[sub.key as keyof typeof formData] === opt ? 'bg-[#7e1d51] text-white' : 'bg-white/50 text-gray-400 border-white/50 hover:bg-white'}`}>
-                            <input type="radio" name={sub.key} value={opt} onChange={e => setFormData({...formData, [sub.key]: e.target.value})} className="hidden" />
-                            {opt}
-                          </label>
-                        ))}
-                      </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {['ممتاز', 'جيد جدًا', 'جيد', 'مقبول'].map(opt => (
+                        <label key={opt} className={`cursor-pointer p-4 rounded-2xl border-2 text-center font-bold transition-all shadow-sm ${formData.q1 === opt ? 'border-[#7e1d51] bg-[#7e1d51] text-white' : 'border-white/40 bg-white/50 text-gray-500 hover:bg-white/80'}`}>
+                          <input type="radio" name="q1" value={opt} onChange={e => setFormData({...formData, q1: e.target.value})} className="hidden" />
+                          {opt}
+                        </label>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </div>
 
-              {/* Q4 */}
-              <div className="space-y-4">
-                <label className="text-lg font-bold text-[#1a0510] flex items-center gap-3 border-r-4 border-[#7e1d51] pr-3">
-                  4️⃣ هل كانت مدة الورشة مناسبة؟
-                </label>
-                <div className="space-y-3">
-                  {['مناسبة جدًا', 'طويلة نوعًا ما', 'قصيرة وتحتاج وقتًا أكثر'].map(opt => (
-                    <label key={opt} className={`flex items-center gap-3 p-5 rounded-2xl border-2 cursor-pointer transition-all shadow-sm ${formData.q4 === opt ? 'border-[#7e1d51] bg-white text-[#7e1d51]' : 'border-white/40 bg-white/50 text-gray-500 hover:bg-white'}`}>
-                      <input type="radio" name="q4" value={opt} onChange={e => setFormData({...formData, q4: e.target.value})} className="accent-[#7e1d51] w-5 h-5" />
-                      <span className="font-bold">{opt}</span>
+                  <div className="space-y-4">
+                    <label className="text-lg font-bold text-[#1a0510] flex items-center gap-3 border-r-4 border-[#7e1d51] pr-3">
+                      2️⃣ ما أكثر شيء أعجبك في الورشة؟
                     </label>
-                  ))}
-                </div>
-              </div>
+                    <textarea rows={4} className="glass-input resize-none" value={formData.q2} onChange={e => setFormData({...formData, q2: e.target.value})} placeholder="اكتب ما لفت انتباهك بكل صراحة..."></textarea>
+                  </div>
 
-              {/* Q5 */}
-              <div className="space-y-4">
-                <label className="text-lg font-bold text-[#1a0510] flex items-center gap-3 border-r-4 border-[#7e1d51] pr-3">
-                  5️⃣ هل ترى أن هناك نقاطًا كانت ناقصة أو تحتاج إضافة؟
-                </label>
-                <textarea rows={4} className="glass-input resize-none" value={formData.q5} onChange={e => setFormData({...formData, q5: e.target.value})} placeholder="اقتراحاتك تهمنا للتحسين..."></textarea>
-              </div>
-
-              {/* Q7 */}
-              <div className="space-y-4">
-                <label className="text-lg font-bold text-[#1a0510] flex items-center gap-3 border-r-4 border-[#7e1d51] pr-3">
-                  7️⃣ هل شجعتك الورشة على الانخراط أكثر في العمل التطوعي؟
-                </label>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {['نعم جدًا', 'نعم إلى حد ما', 'لا'].map(opt => (
-                    <label key={opt} className={`cursor-pointer p-5 rounded-2xl border-2 text-center font-bold transition-all shadow-sm ${formData.q7 === opt ? 'border-[#7e1d51] bg-[#7e1d51] text-white' : 'border-white/40 bg-white/50 text-gray-500 hover:bg-white'}`}>
-                      <input type="radio" name="q7" value={opt} onChange={e => setFormData({...formData, q7: e.target.value})} className="hidden" />
-                      {opt}
+                  <div className="space-y-6">
+                    <label className="text-lg font-bold text-[#1a0510] flex items-center gap-3 border-r-4 border-[#7e1d51] pr-3">
+                      3️⃣ كيف تقيّم أداء الأستاذ المحاضر من حيث:
                     </label>
-                  ))}
-                </div>
-              </div>
+                    <div className="space-y-6">
+                      {[
+                        { key: 'q3_clarity', label: 'وضوح الشرح' },
+                        { key: 'q3_interaction', label: 'التفاعل مع الحضور' },
+                        { key: 'q3_delivery', label: 'إيصال الفكرة' }
+                      ].map(sub => (
+                        <div key={sub.key} className="p-5 bg-white/30 rounded-2xl border border-white/40">
+                          <p className="font-bold text-gray-700 mb-4 text-sm">{sub.label}</p>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            {['ممتاز', 'جيد', 'متوسط', 'يحتاج تحسين'].map(opt => (
+                              <label key={opt} className={`cursor-pointer p-3 rounded-xl border text-xs text-center font-bold transition-all ${formData[sub.key as keyof typeof formData] === opt ? 'bg-[#7e1d51] text-white' : 'bg-white/50 text-gray-400 border-white/50 hover:bg-white'}`}>
+                                <input type="radio" name={sub.key} value={opt} onChange={e => setFormData({...formData, [sub.key]: e.target.value})} className="hidden" />
+                                {opt}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <label className="text-lg font-bold text-[#1a0510] flex items-center gap-3 border-r-4 border-[#7e1d51] pr-3">
+                      4️⃣ هل كانت مدة الورشة مناسبة؟
+                    </label>
+                    <div className="space-y-3">
+                      {['مناسبة جدًا', 'طويلة نوعًا ما', 'قصيرة وتحتاج وقتًا أكثر'].map(opt => (
+                        <label key={opt} className={`flex items-center gap-3 p-5 rounded-2xl border-2 cursor-pointer transition-all shadow-sm ${formData.q4 === opt ? 'border-[#7e1d51] bg-white text-[#7e1d51]' : 'border-white/40 bg-white/50 text-gray-500 hover:bg-white'}`}>
+                          <input type="radio" name="q4" value={opt} onChange={e => setFormData({...formData, q4: e.target.value})} className="accent-[#7e1d51] w-5 h-5" />
+                          <span className="font-bold">{opt}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <label className="text-lg font-bold text-[#1a0510] flex items-center gap-3 border-r-4 border-[#7e1d51] pr-3">
+                      5️⃣ هل ترى أن هناك نقاطًا كانت ناقصة أو تحتاج إضافة؟
+                    </label>
+                    <textarea rows={4} className="glass-input resize-none" value={formData.q5} onChange={e => setFormData({...formData, q5: e.target.value})} placeholder="اقتراحاتك تهمنا للتحسين..."></textarea>
+                  </div>
+
+                  <div className="space-y-4">
+                    <label className="text-lg font-bold text-[#1a0510] flex items-center gap-3 border-r-4 border-[#7e1d51] pr-3">
+                      7️⃣ هل شجعتك الورشة على الانخراط أكثر في العمل التطوعي؟
+                    </label>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {['نعم جدًا', 'نعم إلى حد ما', 'لا'].map(opt => (
+                        <label key={opt} className={`cursor-pointer p-5 rounded-2xl border-2 text-center font-bold transition-all shadow-sm ${formData.q7 === opt ? 'border-[#7e1d51] bg-[#7e1d51] text-white' : 'border-white/40 bg-white/50 text-gray-500 hover:bg-white'}`}>
+                          <input type="radio" name="q7" value={opt} onChange={e => setFormData({...formData, q7: e.target.value})} className="hidden" />
+                          {opt}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* Dynamic Rendering Logic */
+                <>
+                    {workshopData?.questions?.map((q: any, index: number) => (
+                        <div key={q.id} className="space-y-4">
+                             <label className="text-lg font-bold text-[#1a0510] flex items-center gap-3 border-r-4 border-[#7e1d51] pr-3">
+                                {index + 1}️⃣ {q.text}
+                             </label>
+                             {q.type === 'radio' ? (
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                    {q.options.map((opt: string) => (
+                                        <label key={opt} className={`cursor-pointer p-4 rounded-2xl border-2 text-center font-bold transition-all shadow-sm ${dynamicResponses[q.text] === opt ? 'border-[#7e1d51] bg-[#7e1d51] text-white' : 'border-white/40 bg-white/50 text-gray-500 hover:bg-white/80'}`}>
+                                            <input 
+                                                type="radio" 
+                                                name={q.text} 
+                                                value={opt} 
+                                                onChange={e => setDynamicResponses({...dynamicResponses, [q.text]: e.target.value})} 
+                                                className="hidden" 
+                                            />
+                                            {opt}
+                                        </label>
+                                    ))}
+                                </div>
+                             ) : (
+                                <textarea 
+                                    rows={4} 
+                                    className="glass-input resize-none" 
+                                    value={dynamicResponses[q.text] || ''} 
+                                    onChange={e => setDynamicResponses({...dynamicResponses, [q.text]: e.target.value})} 
+                                    placeholder="اكتب إجابتك هنا..."
+                                ></textarea>
+                             )}
+                        </div>
+                    ))}
+                </>
+              )}
 
               <div className="pt-8 border-t border-white/40 text-center">
                 <p className="text-gray-400 text-xs mb-8 leading-relaxed font-bold">

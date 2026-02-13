@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { uploadToCloudinary } from '../services/cloudinary';
-import { Newspaper, Users, LogOut, Plus, Loader2, Save, Trash2, Eye, EyeOff, X, ImagePlus, Lock, Phone, User, MapPin, Mail, Settings, ShieldCheck, AlertOctagon, ExternalLink } from 'lucide-react';
+import { Newspaper, Users, LogOut, Plus, Loader2, Save, Trash2, Eye, EyeOff, X, ImagePlus, Lock, Phone, User, MapPin, Mail, Settings, ShieldCheck, AlertOctagon, ExternalLink, Presentation, ListPlus, GripVertical } from 'lucide-react';
 
 const AdminDashboard: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -13,12 +13,10 @@ const AdminDashboard: React.FC = () => {
   const [isSecretRoute, setIsSecretRoute] = useState(false);
 
   useEffect(() => {
-    // Check for cached session
     const token = localStorage.getItem('adminToken');
     if (token) {
         setIsAuthenticated(true);
     }
-    
     if (window.location.hash === '#//admin') {
       setIsSecretRoute(true);
     } else {
@@ -26,11 +24,13 @@ const AdminDashboard: React.FC = () => {
     }
   }, []);
 
-  const [activeTab, setActiveTab] = useState<'news' | 'registrations' | 'settings'>('news');
+  const [activeTab, setActiveTab] = useState<'news' | 'registrations' | 'settings' | 'workshops'>('news');
   const [registrations, setRegistrations] = useState<any[]>([]);
   const [newsList, setNewsList] = useState<any[]>([]);
+  const [workshopsList, setWorkshopsList] = useState<any[]>([]);
   const [loadingReg, setLoadingReg] = useState(false);
   const [loadingNewsList, setLoadingNewsList] = useState(false);
+  const [loadingWorkshops, setLoadingWorkshops] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // News Form
@@ -42,12 +42,22 @@ const AdminDashboard: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const [selectedReg, setSelectedReg] = useState<any | null>(null);
 
+  // Workshop Form
+  const [wsId, setWsId] = useState('');
+  const [wsTitle, setWsTitle] = useState('');
+  const [wsInstructor, setWsInstructor] = useState('');
+  const [wsHeroImage, setWsHeroImage] = useState<FileList | null>(null);
+  const [wsQuestions, setWsQuestions] = useState<any[]>([]);
+  const [newQuestionText, setNewQuestionText] = useState('');
+  const [newQuestionType, setNewQuestionType] = useState<'text' | 'radio'>('radio');
+  const [newQuestionOptions, setNewQuestionOptions] = useState('');
+  const [isSavingWs, setIsSavingWs] = useState(false);
+
   // Settings State
   const [evaluationEmails, setEvaluationEmails] = useState<string[]>([]);
   const [newEmail, setNewEmail] = useState('');
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
-  // Helper for Auth Headers
   const getAuthHeaders = () => {
       const token = localStorage.getItem('adminToken');
       return {
@@ -60,16 +70,13 @@ const AdminDashboard: React.FC = () => {
     e.preventDefault();
     setIsLoggingIn(true);
     setLoginError('');
-
     try {
         const res = await fetch('/api/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, password })
         });
-
         const data = await res.json();
-
         if (res.ok && data.success) {
             localStorage.setItem('adminToken', data.token);
             setIsAuthenticated(true);
@@ -94,6 +101,7 @@ const AdminDashboard: React.FC = () => {
         if (activeTab === 'registrations') fetchRegistrations();
         if (activeTab === 'news') fetchNews();
         if (activeTab === 'settings') fetchSettings();
+        if (activeTab === 'workshops') fetchWorkshops();
     }
   }, [isAuthenticated, activeTab]);
 
@@ -112,7 +120,7 @@ const AdminDashboard: React.FC = () => {
   const fetchNews = async () => {
     setLoadingNewsList(true);
     try {
-        const res = await fetch('/api/news'); // Public GET
+        const res = await fetch('/api/news');
         if (res.ok) {
             const data = await res.json();
             setNewsList(data);
@@ -129,6 +137,18 @@ const AdminDashboard: React.FC = () => {
             setEvaluationEmails(data);
         }
     } catch (e) { console.error(e); }
+  };
+
+  const fetchWorkshops = async () => {
+    setLoadingWorkshops(true);
+    try {
+        const res = await fetch('/api/admin?type=workshops', { headers: getAuthHeaders() });
+        if (res.status === 401) { handleLogout(); return; }
+        if (res.ok) {
+            const data = await res.json();
+            setWorkshopsList(data);
+        }
+    } catch (e) { console.error(e); } finally { setLoadingWorkshops(false); }
   };
 
   const handleAddEmail = () => {
@@ -208,6 +228,72 @@ const AdminDashboard: React.FC = () => {
     } catch (err: any) { alert(err.message || "خطأ في النشر"); } finally { setUploading(false); }
   };
 
+  const handleAddQuestion = () => {
+    if (!newQuestionText) return;
+    const q = {
+        id: Date.now(),
+        text: newQuestionText,
+        type: newQuestionType,
+        options: newQuestionType === 'radio' ? newQuestionOptions.split('\n').filter(o => o.trim()) : []
+    };
+    setWsQuestions([...wsQuestions, q]);
+    setNewQuestionText('');
+    setNewQuestionOptions('');
+  };
+
+  const handleRemoveQuestion = (id: number) => {
+    setWsQuestions(wsQuestions.filter(q => q.id !== id));
+  };
+
+  const handleSaveWorkshop = async () => {
+    if (!wsId || !wsTitle || !wsQuestions.length) {
+        alert("يرجى ملء جميع الحقول المطلوبة وإضافة سؤال واحد على الأقل.");
+        return;
+    }
+    setIsSavingWs(true);
+    try {
+        let heroImageUrl = "https://res.cloudinary.com/dxqbn7i5l/image/upload/v1770433939/u8glfvii0uzzgiw6hzwr.jpg"; // Default
+        if (wsHeroImage && wsHeroImage.length > 0) {
+            const url = await uploadToCloudinary(wsHeroImage[0]);
+            if (url) heroImageUrl = url;
+        }
+
+        const res = await fetch('/api/admin?type=workshops', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+                id: wsId,
+                title: wsTitle,
+                instructor: wsInstructor,
+                heroImage: heroImageUrl,
+                questions: wsQuestions
+            })
+        });
+
+        if (res.status === 401) { handleLogout(); return; }
+        if (res.ok) {
+            alert("تم حفظ الورشة بنجاح!");
+            setWsId(''); setWsTitle(''); setWsInstructor(''); setWsQuestions([]); setWsHeroImage(null);
+            fetchWorkshops();
+        } else {
+            alert("حدث خطأ أثناء الحفظ. ربما رقم الورشة مستخدم؟");
+        }
+    } catch (e) {
+        alert("فشل الاتصال");
+    } finally {
+        setIsSavingWs(false);
+    }
+  };
+
+  const handleDeleteWorkshop = async (id: string) => {
+      if (confirm("هل أنت متأكد من حذف هذه الورشة؟")) {
+          try {
+              const res = await fetch(`/api/admin?type=workshops&id=${id}`, { method: 'DELETE', headers: getAuthHeaders() });
+              if (res.ok) fetchWorkshops();
+          } catch(e) { alert("خطأ في الحذف"); }
+      }
+  };
+
   if (!isSecretRoute) return <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 text-center p-6"><AlertOctagon size={80} className="text-red-500 mb-6" /><h1 className="text-3xl font-black text-gray-900 mb-2">منطقة محظورة</h1><p className="text-gray-500">تم تسجيل محاولة الدخول غير المصرح به.</p></div>;
 
   if (!isAuthenticated) return (
@@ -260,6 +346,7 @@ const AdminDashboard: React.FC = () => {
         <nav className="p-6 space-y-4">
           <button onClick={() => setActiveTab('news')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 ${activeTab === 'news' ? 'bg-[#7e1d51] text-white shadow-lg shadow-[#7e1d51]/20' : 'text-gray-500 hover:bg-gray-50 hover:text-[#7e1d51]'}`}><Newspaper size={20} /> <span className="font-bold">إدارة الأخبار</span></button>
           <button onClick={() => setActiveTab('registrations')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 ${activeTab === 'registrations' ? 'bg-[#7e1d51] text-white shadow-lg shadow-[#7e1d51]/20' : 'text-gray-500 hover:bg-gray-50 hover:text-[#7e1d51]'}`}><Users size={20} /> <span className="font-bold">قائمة المنخرطين</span></button>
+          <button onClick={() => setActiveTab('workshops')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 ${activeTab === 'workshops' ? 'bg-[#7e1d51] text-white shadow-lg shadow-[#7e1d51]/20' : 'text-gray-500 hover:bg-gray-50 hover:text-[#7e1d51]'}`}><Presentation size={20} /> <span className="font-bold">إنشاء الورشات</span></button>
           <button onClick={() => setActiveTab('settings')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 ${activeTab === 'settings' ? 'bg-[#7e1d51] text-white shadow-lg shadow-[#7e1d51]/20' : 'text-gray-500 hover:bg-gray-50 hover:text-[#7e1d51]'}`}><Settings size={20} /> <span className="font-bold">إعدادات النظام</span></button>
         </nav>
         <div className="p-6 border-t border-gray-50 mt-auto">
@@ -300,6 +387,99 @@ const AdminDashboard: React.FC = () => {
                  </table>
              </div>
           </div>
+        )}
+        
+        {activeTab === 'workshops' && (
+            <div className="space-y-10 animate-fadeInUp">
+                <div className="bg-white rounded-[2.5rem] p-8 md:p-12 shadow-sm border border-gray-100">
+                    <h2 className="text-2xl font-black text-gray-800 mb-8 flex items-center gap-3"><Presentation className="text-[#7e1d51]" /> إنشاء استمارة تقييم ورشة جديدة</h2>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                        <div className="space-y-2">
+                             <label className="text-xs font-bold text-gray-500">رقم الورشة (Studio ID)</label>
+                             <input type="number" value={wsId} onChange={e => setWsId(e.target.value)} className="w-full p-5 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-[#7e1d51] transition-all font-bold" placeholder="مثال: 2" />
+                             <p className="text-[10px] text-gray-400">سيكون الرابط: /page?studio={wsId || 'X'}</p>
+                        </div>
+                        <div className="space-y-2">
+                             <label className="text-xs font-bold text-gray-500">عنوان الورشة</label>
+                             <input type="text" value={wsTitle} onChange={e => setWsTitle(e.target.value)} className="w-full p-5 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-[#7e1d51] transition-all font-bold" placeholder="مثال: ورشة العمل التطوعي" />
+                        </div>
+                        <div className="space-y-2">
+                             <label className="text-xs font-bold text-gray-500">اسم الأستاذ (اختياري)</label>
+                             <input type="text" value={wsInstructor} onChange={e => setWsInstructor(e.target.value)} className="w-full p-5 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-[#7e1d51] transition-all font-bold" placeholder="مثال: #محمد_شهري" />
+                        </div>
+                         <div className="space-y-2">
+                             <label className="text-xs font-bold text-gray-500">صورة الغلاف (اختياري)</label>
+                             <input type="file" onChange={e => setWsHeroImage(e.target.files)} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl" />
+                        </div>
+                    </div>
+
+                    <div className="bg-gray-50 rounded-[2rem] p-6 mb-6 border border-gray-200">
+                        <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><ListPlus size={20} /> بناء الأسئلة</h3>
+                        
+                        <div className="space-y-4 mb-6">
+                            {wsQuestions.map((q, idx) => (
+                                <div key={q.id} className="bg-white p-4 rounded-2xl border border-gray-200 flex items-start justify-between shadow-sm">
+                                    <div>
+                                        <span className="bg-[#7e1d51] text-white text-xs px-2 py-1 rounded-lg font-bold ml-2">سؤال {idx + 1}</span>
+                                        <span className="bg-gray-100 text-gray-500 text-xs px-2 py-1 rounded-lg font-bold">{q.type === 'radio' ? 'خيارات' : 'نصي'}</span>
+                                        <p className="font-bold text-gray-800 mt-2">{q.text}</p>
+                                        {q.type === 'radio' && (
+                                            <div className="flex flex-wrap gap-2 mt-2">
+                                                {q.options.map((opt: string, i: number) => (
+                                                    <span key={i} className="text-xs bg-pink-50 text-[#7e1d51] px-2 py-1 rounded-md">{opt}</span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <button onClick={() => handleRemoveQuestion(q.id)} className="text-red-400 hover:text-red-600 p-2"><Trash2 size={16} /></button>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="bg-white p-6 rounded-2xl border-2 border-dashed border-gray-300">
+                             <div className="space-y-3">
+                                 <input type="text" value={newQuestionText} onChange={e => setNewQuestionText(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#7e1d51] font-bold text-sm" placeholder="نص السؤال..." />
+                                 <div className="flex gap-4">
+                                     <label className="flex items-center gap-2 cursor-pointer">
+                                         <input type="radio" checked={newQuestionType === 'radio'} onChange={() => setNewQuestionType('radio')} className="accent-[#7e1d51]" />
+                                         <span className="text-sm font-bold text-gray-600">اختيار من متعدد</span>
+                                     </label>
+                                     <label className="flex items-center gap-2 cursor-pointer">
+                                         <input type="radio" checked={newQuestionType === 'text'} onChange={() => setNewQuestionType('text')} className="accent-[#7e1d51]" />
+                                         <span className="text-sm font-bold text-gray-600">إجابة نصية</span>
+                                     </label>
+                                 </div>
+                                 {newQuestionType === 'radio' && (
+                                     <textarea value={newQuestionOptions} onChange={e => setNewQuestionOptions(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#7e1d51] font-bold text-sm h-20 resize-none" placeholder="اكتب الخيارات (كل خيار في سطر)..." />
+                                 )}
+                                 <button onClick={handleAddQuestion} className="w-full py-3 bg-gray-800 text-white font-bold rounded-xl hover:bg-black transition-all text-sm">إضافة السؤال</button>
+                             </div>
+                        </div>
+                    </div>
+
+                    <button onClick={handleSaveWorkshop} disabled={isSavingWs} className="w-full py-5 bg-[#7e1d51] text-white font-black rounded-2xl shadow-xl hover:shadow-2xl hover:scale-[1.01] transition-all flex justify-center items-center gap-3 text-lg">
+                        {isSavingWs ? <Loader2 className="animate-spin" /> : <Save size={24} />}
+                        {isSavingWs ? 'جاري إنشاء الورشة...' : 'حفظ ونشر الورشة'}
+                    </button>
+                </div>
+
+                <div className="bg-white rounded-[2.5rem] p-8 border border-gray-100 shadow-sm">
+                    <h3 className="font-black text-xl text-gray-800 mb-6 px-2">الورشات النشطة</h3>
+                    <div className="space-y-3">
+                        {workshopsList.map(item => (
+                            <div key={item.id} className="flex justify-between items-center p-5 bg-gray-50/50 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-md transition-all group">
+                                <div>
+                                    <span className="font-bold text-gray-700 block">{item.title}</span>
+                                    <a href={`/page?studio=${item.id}`} target="_blank" className="text-xs text-[#7e1d51] hover:underline flex items-center gap-1 mt-1"><ExternalLink size={12} /> معاينة الرابط</a>
+                                </div>
+                                <button onClick={() => handleDeleteWorkshop(item.id)} className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18} /></button>
+                            </div>
+                        ))}
+                        {workshopsList.length === 0 && <p className="text-gray-400 text-center py-4">لا توجد ورشات مضافة.</p>}
+                    </div>
+                </div>
+            </div>
         )}
 
         {activeTab === 'settings' && (
@@ -380,4 +560,3 @@ const AdminDashboard: React.FC = () => {
 };
 
 export default AdminDashboard;
-    

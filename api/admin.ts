@@ -47,6 +47,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch (error) {
         return res.status(500).json({ error: 'Failed to fetch settings' });
       }
+    } else if (type === 'workshops') {
+        try {
+            const result = await db.query('SELECT id, title, instructor, created_at FROM workshops ORDER BY created_at DESC');
+            return res.status(200).json(result.rows);
+        } catch (error) {
+            return res.status(500).json({ error: 'Failed to fetch workshops' });
+        }
     }
   }
 
@@ -63,7 +70,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } catch (error) {
             return res.status(500).json({ error: 'Failed to update settings' });
         }
+    } else if (type === 'workshops') {
+        const { id, title, instructor, heroImage, questions } = req.body;
+        
+        if (!id || !title || !questions) {
+            return res.status(400).json({ error: 'بيانات غير مكتملة' });
+        }
+
+        try {
+            await db.query(
+                `INSERT INTO workshops (id, title, instructor, hero_image, questions) 
+                 VALUES ($1, $2, $3, $4, $5)
+                 ON CONFLICT (id) DO UPDATE 
+                 SET title = $2, instructor = $3, hero_image = $4, questions = $5, created_at = EXTRACT(EPOCH FROM NOW()) * 1000`,
+                [id, title, instructor, heroImage, JSON.stringify(questions)]
+            );
+            return res.status(200).json({ success: true });
+        } catch (error) {
+            console.error(error);
+            return res.status(500).json({ error: 'فشل في حفظ الورشة' });
+        }
     }
+  }
+
+  if (req.method === 'DELETE') {
+      if (type === 'workshops') {
+          const { id } = req.query;
+          try {
+              await db.query('DELETE FROM workshops WHERE id = $1', [id]);
+              return res.status(200).json({ success: true });
+          } catch (error) {
+              return res.status(500).json({ error: 'Failed to delete workshop' });
+          }
+      }
   }
 
   return res.status(400).json({ error: 'Invalid Request' });

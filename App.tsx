@@ -26,8 +26,9 @@ function App() {
       const search = new URLSearchParams(window.location.search);
       const cleanPath = path === '/' ? '/' : path.replace(/\/$/, '');
 
-      // Check for workshop evaluation page via query param studio=1
-      if (cleanPath === '/page' && search.get('studio') === '1') {
+      // Check for workshop evaluation page via query param studio
+      // UPDATE: Allow any studio ID, not just '1'
+      if (cleanPath === '/page' && search.get('studio')) {
         setCurrentPage('workshop-evaluation');
         return;
       }

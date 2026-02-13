@@ -88,3 +88,14 @@ CREATE TABLE IF NOT EXISTS login_attempts (
   last_attempt BIGINT,
   blocked_until BIGINT DEFAULT 0
 );
+
+-- 9. جدول الورشات (Workshops - Dynamic Forms)
+CREATE TABLE IF NOT EXISTS workshops (
+  id INTEGER PRIMARY KEY, -- رقم الورشة (مثال: 2) يحدده الأدمن
+  title TEXT NOT NULL,
+  instructor TEXT,
+  hero_image TEXT,
+  questions JSONB NOT NULL, -- تخزين الأسئلة كـ JSON
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at BIGINT DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)
+);
