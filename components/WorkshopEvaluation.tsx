@@ -9,6 +9,8 @@ const WorkshopEvaluation: React.FC = () => {
   // State for Dynamic Workshop
   const [loading, setLoading] = useState(true);
   const [workshopData, setWorkshopData] = useState<any>(null);
+  
+  // 🔥 FIX: Use IDs for keys to prevent collision if questions have same text
   const [dynamicResponses, setDynamicResponses] = useState<Record<string, string>>({});
 
   // Fallback / Hardcoded State (For Studio 1)
@@ -34,8 +36,6 @@ const WorkshopEvaluation: React.FC = () => {
               .then(res => res.json())
               .then(data => {
                   if (data.error) {
-                      // Fallback to legacy if not found or error, or show error? 
-                      // For safety, if error, we might show "Workshop Not Found" or fallback to default
                       setIsLegacy(true); 
                   } else {
                       setWorkshopData(data);
@@ -85,15 +85,22 @@ const WorkshopEvaluation: React.FC = () => {
         payload.isDynamic = false;
     } else {
         // Validate Dynamic Form
-        // Check if all radio questions are answered
         const radioQuestions = workshopData.questions.filter((q: any) => q.type === 'radio');
         for (const q of radioQuestions) {
-            if (!dynamicResponses[q.text]) {
+            // Check by ID
+            if (!dynamicResponses[q.id]) {
                 setError(`يرجى الإجابة على السؤال: ${q.text}`);
                 return;
             }
         }
-        payload.responses = dynamicResponses;
+        
+        // 🔥 FIX: Map IDs back to Text for the Email
+        const formattedResponses: Record<string, string> = {};
+        workshopData.questions.forEach((q: any) => {
+            formattedResponses[q.text] = dynamicResponses[q.id] || '';
+        });
+
+        payload.responses = formattedResponses;
         payload.isDynamic = true;
         payload.workshopTitle = workshopData.title;
     }
@@ -226,8 +233,9 @@ const WorkshopEvaluation: React.FC = () => {
               
               {isLegacy ? (
                 <>
-                  {/* ... Legacy Hardcoded Questions (Identical to original) ... */}
-                  <div className="space-y-4">
+                  {/* ... Legacy Questions Omitted for brevity, they are fine ... */}
+                  {/* COPY THE LEGACY CODE FROM PREVIOUS FILE CONTENT IF NEEDED, BUT KEEPING STRUCTURE SIMPLE */}
+                   <div className="space-y-4">
                     <label className="text-lg font-bold text-[#1a0510] flex items-center gap-3 border-r-4 border-[#7e1d51] pr-3">
                       1️⃣ كيف كان انطباعك العام عن الورشة؟
                     </label>
@@ -309,7 +317,7 @@ const WorkshopEvaluation: React.FC = () => {
                   </div>
                 </>
               ) : (
-                /* Dynamic Rendering Logic */
+                /* Dynamic Rendering Logic - FIXED */
                 <>
                     {workshopData?.questions?.map((q: any, index: number) => (
                         <div key={q.id} className="space-y-4">
@@ -318,13 +326,14 @@ const WorkshopEvaluation: React.FC = () => {
                              </label>
                              {q.type === 'radio' ? (
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                                    {q.options.map((opt: string) => (
-                                        <label key={opt} className={`cursor-pointer p-4 rounded-2xl border-2 text-center font-bold transition-all shadow-sm ${dynamicResponses[q.text] === opt ? 'border-[#7e1d51] bg-[#7e1d51] text-white' : 'border-white/40 bg-white/50 text-gray-500 hover:bg-white/80'}`}>
+                                    {q.options.map((opt: string, optIdx: number) => (
+                                        <label key={`${q.id}-${optIdx}`} className={`cursor-pointer p-4 rounded-2xl border-2 text-center font-bold transition-all shadow-sm ${dynamicResponses[q.id] === opt ? 'border-[#7e1d51] bg-[#7e1d51] text-white' : 'border-white/40 bg-white/50 text-gray-500 hover:bg-white/80'}`}>
                                             <input 
                                                 type="radio" 
-                                                name={q.text} 
+                                                name={`question_${q.id}`} // 🔥 FIX: Unique Name per Question ID
                                                 value={opt} 
-                                                onChange={e => setDynamicResponses({...dynamicResponses, [q.text]: e.target.value})} 
+                                                // 🔥 FIX: Store answer by ID
+                                                onChange={e => setDynamicResponses({...dynamicResponses, [q.id]: e.target.value})} 
                                                 className="hidden" 
                                             />
                                             {opt}
@@ -335,8 +344,8 @@ const WorkshopEvaluation: React.FC = () => {
                                 <textarea 
                                     rows={4} 
                                     className="glass-input resize-none" 
-                                    value={dynamicResponses[q.text] || ''} 
-                                    onChange={e => setDynamicResponses({...dynamicResponses, [q.text]: e.target.value})} 
+                                    value={dynamicResponses[q.id] || ''} 
+                                    onChange={e => setDynamicResponses({...dynamicResponses, [q.id]: e.target.value})} 
                                     placeholder="اكتب إجابتك هنا..."
                                 ></textarea>
                              )}

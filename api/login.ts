@@ -20,9 +20,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const now = Date.now();
 
   try {
-    // 1. AUTO-SETUP: If no admins exist, create the default one securely.
-    // This is a self-healing step to initialize the DB without running manual SQL.
+    // 1. AUTO-SETUP / INITIAL BOOTSTRAP:
+    // This logic only runs if the `admins` table is completely empty (first time run).
+    // It creates the default admin user safely in the database.
+    // NOTE: This hardcoded check is only for system initialization and cannot be used once an admin exists.
     const countRes = await db.query('SELECT count(*) FROM admins');
+    
     if (parseInt(countRes.rows[0].count) === 0) {
       if (username === 'admin' && password === '01012026') {
         const { hash, salt } = hashPassword('01012026');
@@ -30,7 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           'INSERT INTO admins (username, password_hash, salt) VALUES ($1, $2, $3)',
           ['admin', hash, salt]
         );
-        // Continue to login logic...
+        // After creating the user, we continue to the standard login logic below...
       } else {
         return res.status(401).json({ error: 'النظام غير مهيأ. يرجى الدخول ببيانات المدير الافتراضي أولاً.' });
       }
@@ -54,7 +57,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // 3. Verify Credentials
+    // 3. Verify Credentials from Database
     const userRes = await db.query('SELECT * FROM admins WHERE username = $1', [username]);
     
     let isAuthenticated = false;
