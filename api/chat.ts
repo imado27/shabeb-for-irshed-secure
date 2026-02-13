@@ -8,7 +8,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { message, history } = req.body;
+  const { message } = req.body;
 
   if (!message) {
     return res.status(400).json({ error: 'Message is required' });
@@ -18,11 +18,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Initialize Gemini API securely on the server
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    // Create a chat model
-    // We use a stateless approach here for simplicity, or we could pass history from frontend if needed
-    // For this implementation, we re-initialize the chat with the system instruction.
-    const chat = ai.chats.create({
-      model: 'gemma-3-27b-it', // Using a fast, standard model
+    // Use generateContent directly instead of chat session for better compatibility with Gemma models
+    // 'gemma-3-27b-it' works best with direct instruction-tuned prompts
+    const result = await ai.models.generateContent({
+      model: 'gemma-3-27b-it',
+      contents: message,
       config: {
         systemInstruction: `أنت مساعد ذكي ومحفز للشباب تابع لجمعية "شباب فور إرشاد".
             شخصيتك: ودود، حكيم، محفز، وتتحدث بأسلوب شبابي راقٍ ومحترم.
@@ -34,8 +34,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
     });
 
-    // If history is provided, we could reconstruct it here, but for now we send the message directly.
-    const result = await chat.sendMessage({ message: message });
     const responseText = result.text;
 
     return res.status(200).json({ response: responseText });
